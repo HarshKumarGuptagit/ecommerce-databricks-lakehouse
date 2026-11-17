@@ -1,27 +1,85 @@
-# End-to-End E-Commerce Databricks Lakehouse
+# E-Commerce Databricks Lakehouse
 
-Production-oriented Medallion Lakehouse built on **Databricks Free Edition** (Serverless compute, Unity Catalog, Delta Lake) using the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
+A production-grade Medallion Lakehouse built on **Databricks** (Unity Catalog, Delta Lake, PySpark) using the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
+
+---
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Kaggle Olist CSVs<br/>Manual Download] --> B[Unity Catalog Volume<br/>/Volumes/workspace/ecommerce_bronze/raw_files]
-    B --> C[Bronze Layer<br/>String-first Delta + _corrupt_record<br/>replaceWhere Idempotency]
-    C --> D[Silver Layer<br/>try_cast + Window Dedup + Broadcast RI<br/>Delta MERGE + Quarantine Tables]
-    D --> E[Gold Star Schema<br/>SCD Type 1 & 2 Dimensions<br/>Grain-Isolated Fact Tables]
-    E --> F[Databricks SQL<br/>KPI Dashboards & Reconciliation]
-    C -.-> G[(ecommerce_ops.pipeline_audit_log)]
+    A[Kaggle CSVs] --> B[UC Volume<br/>raw_files]
+    B --> C[Bronze Layer<br/>Raw Delta]
+    C --> D[Silver Layer<br/>Cleaned & Validated]
+    D --> E[Gold Layer<br/>Star Schema & SCD 2]
+    E --> F[Databricks SQL<br/>KPIs & Dashboards]
+
+    C -.-> G[(ecommerce_ops<br/>pipeline_audit_log)]
     D -.-> G
 ```
 
-## Key Engineering Highlights
-- **Bronze Layer:** Explicit `StringType()` schemas, `multiLine=True` + `escape='"'` (prevented 25 broken multi-line rows in `reviews`), `_metadata.file_path` lineage, `_corrupt_record` capture, and idempotent `replaceWhere` batch overwrites.
-- **Silver Layer:** `try_to_timestamp` / `try_cast` (`DECIMAL(10,2)`), composite-key `Window` deduplication (caught 814 shared `review_id`s across orders), `broadcast()` `left_anti`/`left_semi` referential integrity checks, quarantine routing, and `MERGE` with stale-overwrite guards.
-- **Incremental & SCD Type 2:** Simulated `batch_2026_11_16` (1 insert, 1 late-arriving update via Deletion Vectors, 1 intra-batch duplicate, 2 quarantined rows) and atomic `merge_key = NULL` SCD Type 2 `MERGE` on `dim_customers` (`sha2` surrogate keys + `row_hash`).
-- **Gold Star Schema:** 4 dimensions (`dim_customers` 96,098 | `dim_products` 32,951 | `dim_sellers` 3,095 | `dim_date` 1,461) and 4 grain-isolated facts (`fact_orders` 99,442 | `fact_order_items` 112,650 | `fact_payments` 103,886 | `fact_reviews` 99,224), reconciling `$13,591,643.70` item revenue to the exact cent without fan-out.
+---
+
+## Medallion Layers
+
+| Layer | Catalog Schema | Description |
+|---|---|---|
+| **Bronze** | `workspace.ecommerce_bronze` | String-first raw ingestion with `_corrupt_record` capture, metadata lineage (`_source_file`, `_ingested_at`), and idempotent `replaceWhere` batch overwrites. |
+| **Silver** | `workspace.ecommerce_silver` | Strongly-typed Delta tables with window deduplication, broadcast referential integrity checks, Delta `MERGE`, and dead-letter quarantine tables (`quarantine_*`). |
+| **Gold** | `workspace.ecommerce_gold` | Dimensional star schema with SCD Type 2 customer history and grain-isolated fact tables to eliminate aggregation fan-out. |
+| **Ops** | `workspace.ecommerce_ops` | Execution metadata and audit logs (`pipeline_audit_log`) tracking run duration, row counts, and corrupt records. |
+
+---
+
+## Data Model (Gold)
+
+### Dimensions
+- `dim_customers` — SCD Type 2 tracking address changes (`customer_sk`, `effective_from`, `effective_to`, `is_current`).
+- `dim_products` — Product attributes (`product_sk`, category, dimensions, weight).
+- `dim_sellers` — Seller location details (`seller_sk`, city, state).
+- `dim_date` — Calendar dimension for temporal analytics.
+
+### Facts
+- `fact_orders` — Order grain with pre-calculated totals and delivery performance metrics.
+- `fact_order_items` — Line-item grain containing unit pricing and freight values.
+- `fact_payments` — Payment transaction grain by payment method and installments.
+- `fact_reviews` — Customer review grain with score and response turnaround time.
+
+---
+
+## Project Structure
+
+```text
+├── notebooks/                  # Databricks execution notebooks
+│   ├── 00_setup_unity_catalog.sql
+│   ├── 01_bronze_ingestion.py
+│   ├── 02_silver_transformation.py
+│   ├── 03_incremental_and_scd.py
+│   ├── 04_gold_modelling.py
+│   └── 05_pipeline_validation.py
+├── src/                        # Reusable PySpark modules
+│   ├── config.py               # Schema and catalog configurations
+│   ├── ingestion/              # Bronze loaders with schema enforcement
+│   ├── quality/                # Deduplication, RI checks, quarantine & merge
+│   ├── transformations/        # Silver parsing, SCD2 logic & Gold facts/dims
+│   └── monitoring/             # Pipeline audit logging
+├── sql/                        # Analytical queries & KPI reports
+└── tests/                      # PySpark unit tests (CI with GitHub Actions)
+```
+
+---
 
 ## How to Run
-1. Download the 7 Olist CSVs manually from Kaggle and upload them to `/Volumes/workspace/ecommerce_bronze/raw_files/`.
-2. Run `notebooks/00_setup_unity_catalog.sql`.
-3. Run `notebooks/01_bronze_ingestion.py` through `notebooks/05_pipeline_validation.py` (or chain them in Databricks **Jobs & Pipelines** with parameter `batch_id`).
+
+1. **Upload Source Files**: Upload the 7 Olist CSVs to the Unity Catalog volume:
+   ```text
+   /Volumes/workspace/ecommerce_bronze/raw_files/
+   ```
+2. **Initialize Catalog**: Run [00_setup_unity_catalog.sql](file:///d:/DE_Projects/ecommerce-databricks-lakehouse/notebooks/00_setup_unity_catalog.sql) to create schemas, volumes, and audit tables.
+3. **Execute Pipeline**: Run notebooks sequentially (or chain via Databricks Workflows with parameter `batch_id`):
+   - `01_bronze_ingestion.py`
+   - `02_silver_transformation.py`
+   - `03_incremental_and_scd.py`
+   - `04_gold_modelling.py`
+   - `05_pipeline_validation.py`
+4. **Query Analytics**: Run [gold_business_metrics.sql](file:///d:/DE_Projects/ecommerce-databricks-lakehouse/sql/gold_business_metrics.sql) for executive KPIs and revenue trends.
