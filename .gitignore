@@ -1,0 +1,17 @@
+# Raw data & local artifacts
+*.csv
+*.parquet
+.github
+data/
+raw_files/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# IDE & OS
+.vscode/
