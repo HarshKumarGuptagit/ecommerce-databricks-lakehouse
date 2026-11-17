@@ -94,7 +94,7 @@ The pipeline is orchestrated as a parameterized 5-task **Databricks Job** (`ecom
 - **Unity Catalog Lineage:** 26 upstream tables → 24 downstream tables
 
 ### Pipeline DAG (Graph View)
-[docs/screenshots/databricks_job_dag.png]
+![Pipeline DAG](docs/screenshots/databricks_job_dag.png)
 
 ### Execution Timeline
-[docs/screenshots/databricks_job_timeline.png]
+![Execution Timeline](docs/screenshots/databricks_job_timeline.png)
