@@ -83,3 +83,18 @@ flowchart LR
    - `04_gold_modelling.py`
    - `05_pipeline_validation.py`
 4. **Query Analytics**: Run [gold_business_metrics.sql](file:///d:/DE_Projects/ecommerce-databricks-lakehouse/sql/gold_business_metrics.sql) for executive KPIs and revenue trends.
+
+---
+
+## Orchestration & Execution (Databricks Jobs)
+
+The pipeline is orchestrated as a parameterized 5-task **Databricks Job** (`ecommerce_lakehouse_pipeline`) on Serverless compute using `batch_id` job parameters and fail-fast task dependencies (`All succeeded`).
+
+- **Total End-to-End Runtime:** `3m 41s` (`01_bronze_ingestion`: `1m 12s` → `02_silver_transformation`: `1m 17s` → `03_incremental_and_scd`: `6.2s` → `04_gold_modelling`: `48s` → `05_pipeline_validation`: `16.3s`)
+- **Unity Catalog Lineage:** 26 upstream tables → 24 downstream tables
+
+### Pipeline DAG (Graph View)
+[docs/screenshots/databricks_job_dag.png]
+
+### Execution Timeline
+[docs/screenshots/databricks_job_timeline.png]
