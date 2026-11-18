@@ -9,7 +9,7 @@ from src.ingestion.bronze_loader import ingest_to_bronze
 
 dbutils.widgets.text("batch_id", "initial_full_load")
 batch_id = dbutils.widgets.get("batch_id")
-run_id = str(uuid.uuid4())
+run_id = str(uuid.uuid4()) 
 
 # COMMAND ----------
 
